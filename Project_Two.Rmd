@@ -70,6 +70,8 @@ data <- data %>%
 
 data[is.na(data$center),'center'] <- 1
 
+# Remove record id and race
+# Create variables for c section, hispanic/latino, male, and sga for the summary table to be more interpretable
 data <- data %>%
   dplyr::select(-c(record_id, mat_race)) %>%
   mutate(csection = case_when(del_method == 2 ~ 1,
@@ -136,6 +138,7 @@ tab_header(gt_table, title = 'Table 1. Differences by Tracheostomy Status')
 
 ```{r}
 # Multicollinearity
+# Create a correlation plot of numeric variables
 cor_mat <- data %>%
   select_if(is.numeric) %>%
   dplyr::select(bw, ga, blength, birth_hc, weight_today.36, inspired_oxygen.36, p_delta.36, peep_cm_h2o_modified.36, weight_today.44, inspired_oxygen.44, p_delta.44, peep_cm_h2o_modified.44) %>%
@@ -162,6 +165,7 @@ Table 3 delineates the eight columns with the highest percentage of missing data
 
 ```{r}
 # Multiple Imputation
+# Convert variables to factors
 data$mat_ethn <- as.factor(data$mat_ethn)
 data$del_method <- as.factor(data$del_method)
 data$prenat_ster <- as.factor(data$prenat_ster)
@@ -174,6 +178,7 @@ data$center <- as.factor(data$center)
 data$ventilation_support_level.36 <- as.factor(data$ventilation_support_level.36)
 data$ventilation_support_level_modified.44 <- as.factor(data$ventilation_support_level_modified.44)
 
+# Create a table of the variables with the highest rates of missingness
 prop_missing <- c()
 for (i in colnames(data)) {
   prop_missing <- c(prop_missing, sum(is.na(data[,i]))/(length(data[,i])) * 100)
@@ -253,7 +258,13 @@ As previously outlined, two distinct models were developed: one focused on predi
 While the consideration of interaction terms was intrinsic to the model selection process, the best subsets method exhibited a propensity for favoring interaction terms over main effects. Consequently, the decision was made to exclusively focus on main effects in order to prioritize model interpretability and coherence.
 
 ```{r}
-forward_selection <- function(df, colnames, interactions) {
+forward_selection <- function(df, colnames) {
+  #' Function to perform forward selection
+  #' 
+  #' @param df, dataframe
+  #' @param colnames, list of columns to consider in forward selection
+  #' 
+  #' @return coefficients after performing k-fold cross validation
   
   x.ord <- model.matrix(Trach ~ ., data = df[,colnames])[,-1]
   y.ord <- df$Trach
@@ -277,7 +288,7 @@ colnames_44 <- c("mat_ethn", "bw", "ga", "del_method", "prenat_ster",
                  "inspired_oxygen.44", "p_delta.44", "peep_cm_h2o_modified.44", "med_ph.44", 
                  "ventilation_support_level_modified.44", "Trach")
 
-
+# Perform forward selection for both the 36 week model and the 44 week model
 coefs_1.36 <- forward_selection(train_imp[[1]], colnames_36)
 coefs_2.36 <- forward_selection(train_imp[[2]], colnames_36)
 coefs_3.36 <- forward_selection(train_imp[[3]], colnames_36)
@@ -312,6 +323,7 @@ To construct the GLMM, the fixed effects models, determined through best subsets
 
 ```{r}
 # Add the random Effect
+# Combine all test datasets into one big dataset for fitting the mixed effects model
 test_data_long <- rbind(test_imp[[1]], test_imp[[2]], test_imp[[3]],
                         test_imp[[4]], test_imp[[5]])
 
@@ -323,7 +335,6 @@ mixed.44 <- lmer(Trach ~ del_method + prenat_ster +  mat_chorio + sga + growth_4
                    med_ph.44 + ventilation_support_level_modified.44 + 
                    peep_cm_h2o_modified.44 + (1 | center), data = test_data_long)
 predict.44 <- predict(mixed.44)
-
 ```
 
 ## Results
@@ -339,6 +350,7 @@ Analysis of Table 3 reveals a positive effect on the log odds of receiving a tra
 Within the 44-week model, invasive positive pressure emerges with the highest odds ratio. Unexpectedly, a pronounced difference in the odds of tracheostomy is observed for infants administered medication for PH compared to the 36-week model. Additionally, maternal chorioamnionitis surfaces as a predictor in the 44-week model, despite its absence in the 36-week model.
 
 ```{r}
+# Create tables containing coefficients for both fixed effects models
 coefs_36_df <- as.data.frame(avg_coefs_36[avg_coefs_36 != 0])
 rownames(coefs_36_df) <- c("Prenatal Corticosteroids", "SGA", "Growth (from Birth)", "Inspired O2", "Medication for PH", "Invasive Positive Pressure")
 colnames(coefs_36_df) <- c("Value")
@@ -368,12 +380,12 @@ $$ for the 44 week time points.
 Table 4 delineates the coefficients derived from the mixed effects models. The introduction of the random effect has induced alterations in the coefficients compared to the fixed effects models. Notably, for variables such as small for gestational age (SGA), medication for pulmonary hypertension (PH), and non-invasive positive pressure (exclusive to the 44-week model), the impact on the log odds of tracheostomy is now negative, contrasting with the positive effects observed in the fixed effects models.
 
 ```{r}
+# Create tables containing coefficients for both mixed effects models
 coef.mixed_36 <- as.data.frame(t(coef(mixed.36)$center[1,-1]))
 colnames(coef.mixed_36) <- c("Value")
 rownames(coef.mixed_36) <- c("Prenatal Corticosteroids", "SGA", "Growth (from Birth)",
                              "Inspired O2", "Medication for PH", 
                              "Non-Invasive Positive Pressure", "Invasive Positive Pressure")
-#coef.mixed_36['Within-Center Variation', 'Value'] <- 0.02215
 
 coef.mixed_44 <- as.data.frame(t(coef(mixed.44)$center[1,-1]))
 colnames(coef.mixed_44) <- c("Value")
@@ -381,7 +393,6 @@ rownames(coef.mixed_44) <- c("Cesarean Section", "Prenatal Corticosteroids",
                              "Maternal Chorioamnionitis", "SGA", "Growth (from 36 Weeks)",
                              "Medication for PH", "Non-Invasive Positive Pressure",
                              "Invasive Positive Pressure", "PEEP")
-#coef.mixed_44['Within-Center Variation', 'Value'] <- 0.02227
 
 kable(list(coef.mixed_36, coef.mixed_44), 
       caption = "Coefficients for Random Effect Models: 36 Weeks (Left) and 44 Weeks (Right)") %>% kable_styling(latex_options = "HOLD_position")
@@ -406,6 +417,12 @@ Calculated ICCs for the 36-week and 44-week mixed effects models stand at 0.2022
 # Use ROC curve to get the best threshold
 
 get_metrics <- function(data, model_coefs) {
+  #' Function to get metrics for a model
+  #' 
+  #' @param data, dataset
+  #' @param model_coefs, named list of model coefficients
+  #' 
+  #' @return list containing best threshold, precision, recall, and f score
   
   x_vars <- model.matrix(Trach ~ ., data = data)
   x_vars <- x_vars[,names(model_coefs)]
@@ -448,6 +465,13 @@ get_metrics <- function(data, model_coefs) {
 
 
 model_validation <- function(test_data, coefs) {
+  #' Function to loop through all imputed test datasets and calculate the metrics for each one
+  #' Averages the metrics across all imputed datasets
+  #' 
+  #' @param test_data, list of imputed test datasets
+  #' @param coefs, named list of coefficients
+  #' 
+  #' @return list containing average values for all metrics across all imputed datasets
   
   precision = recall = f1 = threshold = c()
   
@@ -468,6 +492,7 @@ model_validation <- function(test_data, coefs) {
   
 }
 
+# Perform model validation for fixed effects models
 val.36 <- model_validation(test_imp, avg_coefs_36)
 val.44 <- model_validation(test_imp, avg_coefs_44)
 
@@ -480,6 +505,12 @@ kbl(val_df, caption = 'Model Validation Metrics for Fixed Effect 36 and 44 Week 
 
 
 model_val <- function(data, model) {
+  #' Function to get metrics for a model
+  #' 
+  #' @param data, dataset
+  #' @param model, model object
+  #' 
+  #' @return list containing best threshold, precision, recall, and f score
   
   predictions <- predict(model, type = 'response')
   best_threshold <- coords(roc(data$Trach ~ predictions, plot = FALSE, 
@@ -515,6 +546,7 @@ model_val <- function(data, model) {
 
 }
 
+# Perform model validation for mixed effects models
 mixed_val.36 <- model_val(test_data_long, mixed.36)
 mixed_val.44 <- model_val(test_data_long, mixed.44)
 
@@ -556,6 +588,8 @@ In conclusion, this study sheds light on the intricate landscape of predicting t
 This analysis has been performed with help from Dr. Christopher Schmid from the School of Public Health at Brown University and Dr. Robin McKinney Alpert Medical School at Brown University.
 
 ```{r, fig.height = 8.5}
+# Plot distributions of predicted probabilities by significant covariates
+
 library(gridExtra)
 x_vars <- model.matrix(Trach ~ ., data = test_data_long)
 x_vars_44 <- x_vars[,names(avg_coefs_44)]
@@ -570,10 +604,15 @@ model_44 <- glm(Trach ~ score_44, data = test_data_long, family = "binomial")
 pred_36 <- predict(model_36, type = "response")
 pred_44 <- predict(model_44, type = "response")
 
+vent_levels <- c(
+  '0'="No Support",
+  '1'="Non-Invasive Support",
+  '2'="Invasive Support"
+)
 
 plot_1 <- ggplot(test_data_long) +
   geom_histogram(aes(x = pred_36)) +
-  facet_grid(rows = vars(ventilation_support_level.36)) +
+  facet_grid(rows = vars(ventilation_support_level.36), labeller = as_labeller(vent_levels)) +
   labs(title = 'Distribution of Predicted Probabilities by Ventilation Support Level',
        x= 'Predicted Probabilities (36 Week Model)',
        y = 'Count') +
@@ -581,7 +620,8 @@ plot_1 <- ggplot(test_data_long) +
 
 plot_2 <- ggplot(test_data_long) +
   geom_histogram(aes(x = pred_44)) +
-  facet_grid(rows = vars(ventilation_support_level_modified.44))+
+  facet_grid(rows = vars(ventilation_support_level_modified.44), 
+             labeller = as_labeller(vent_levels)) +
   labs(title = 'Distribution of Predicted Probabilities by Ventilation Support Level',
        x = 'Predicted Probabilities (44 Week Model)',
        y = 'Count') +
@@ -604,9 +644,12 @@ plot_4 <- ggplot(test_data_long) +
        y = 'Count') +
   theme(text=element_text(size=6))
 
+sga_levels <- c('0'='No',
+                '1'='Yes')
+
 plot_5 <- ggplot(test_data_long) +
   geom_histogram(aes(x = pred_36)) +
-  facet_grid(rows = vars(sga)) +
+  facet_grid(rows = vars(sga), labeller = as_labeller(sga_levels)) +
   labs(title = 'Distribution of Predicted Probabilities by SGA',
        x= 'Predicted Probabilities (36 Week Model)',
        y = 'Count') +
@@ -614,15 +657,18 @@ plot_5 <- ggplot(test_data_long) +
 
 plot_6 <- ggplot(test_data_long) +
   geom_histogram(aes(x = pred_44)) +
-  facet_grid(rows = vars(sga))+
+  facet_grid(rows = vars(sga), labeller = as_labeller(sga_levels))+
   labs(title = 'Distribution of Predicted Probabilities by SGA',
        x = 'Predicted Probabilities (44 Week Model)',
        y = 'Count') +
   theme(text=element_text(size=6))
 
+med_ph_levels <- c('0'='No',
+                   '1'='Yes')
+
 plot_7 <- ggplot(test_data_long) +
   geom_histogram(aes(x = pred_36)) +
-  facet_grid(rows = vars(med_ph.36)) +
+  facet_grid(rows = vars(med_ph.36), labeller = as_labeller(med_ph_levels)) +
   labs(title = 'Distribution of Predicted Probabilities by Medication for PH',
        x= 'Predicted Probabilities (36 Week Model)',
        y = 'Count') +
@@ -630,7 +676,7 @@ plot_7 <- ggplot(test_data_long) +
 
 plot_8 <- ggplot(test_data_long) +
   geom_histogram(aes(x = pred_44)) +
-  facet_grid(rows = vars(med_ph.44))+
+  facet_grid(rows = vars(med_ph.44), labeller = as_labeller(med_ph_levels))+
   labs(title = 'Distribution of Predicted Probabilities by Medication for PH',
        x = 'Predicted Probabilities (44 Week Model)',
        y = 'Count') + 

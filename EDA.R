@@ -7,6 +7,7 @@ library(corrplot)
 data <- read.csv('../project2.csv')
 head(data)
 
+# Standardize the data
 data <- data %>%
   mutate_at(c("bw", "weight_today.36", "inspired_oxygen.36", "p_delta.36",
                "peep_cm_h2o_modified.36", "weight_today.44", "inspired_oxygen.44", 
@@ -121,26 +122,17 @@ ggplot(weight_over_time) +
   geom_line(aes(x = time, y = weight, group = record_id))
 
 
+# Plot distributions of oxygen levels at 36 and 44 weeks
 ggplot(data) +
   geom_histogram(aes(x = inspired_oxygen.36))
 ggplot(data) +
   geom_histogram(aes(x = inspired_oxygen.44))
 
 
-data 
-
-ggplot(data) +
-  geom_boxplot(aes(x = p_delta.36))
-
+# Get the range of the peak inspiratory pressure and PEEP variables at both time points
 range(data$p_delta.36, na.rm = TRUE)
 range(data$peep_cm_h2o_modified.36, na.rm = TRUE)
 
 range(data$p_delta.44, na.rm = TRUE)
 range(data$peep_cm_h2o_modified.44, na.rm = TRUE)
-
-
-
-
-ggplot(data) +
-  geom_histogram(aes(x = peep_cm_h2o_modified.36))
 
