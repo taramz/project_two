@@ -231,6 +231,7 @@ kbl(missing_data, booktabs = T, escape = F, caption = "Columns with Largest Volu
   kable_styling(latex_options = "HOLD_position")
 
 
+# Look at tracheostomy prevalence between infants with data at 44 weeks and those without it
 trach_discharged <- data %>%
   filter(is.na(peep_cm_h2o_modified.44) & is.na(weight_today.44) & is.na(inspired_oxygen.44) &
            is.na(ventilation_support_level_modified.44) & is.na(p_delta.44)) %>%
@@ -250,7 +251,6 @@ rownames(trach_prevalence) <- c('Missing 44 Week Data', 'Not Missing 44 Week Dat
 
 kable(trach_prevalence, booktabs = T, escape = F, caption = 'Tracheostomy Prevalence Between Infants With and Without Data Collected at 44 Weeks') %>%
   kable_styling(latex_options = 'HOLD_position')
-
 
 ```
 
@@ -316,6 +316,7 @@ forward_selection <- function(df, colnames, week) {
   #' 
   #' @return coefficients after performing k-fold cross validation
   
+  # Include med_ph as interaction terms
   if (week == 36) {
     x.ord <- model.matrix(Trach ~ . + inspired_oxygen.36:med_ph.36 + p_delta.36:med_ph.36 +
                             peep_cm_h2o_modified.36:med_ph.36 + 
