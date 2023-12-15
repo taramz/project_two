@@ -19,7 +19,7 @@ This study utilizes a national dataset of 996 infants with severe Bronchopulmona
 
 Variable selection identifies significant covariates, emphasizing prenatal corticosteroids, small for gestational age (SGA), inspired O2, medication for pulmonary hypertension (PH), and invasive positive pressure. Correlation analyses guide the exclusion of correlated metrics, and missing data patterns prompt careful imputation considerations.
 
-Fixed effects models and mixed-effects models, acknowledging center-level variation, reveal consistent predictors in both 36 and 44-week models. Evaluation metrics favor the 44-week model, indicating superior predictive accuracy, precision, and recall. Surprisingly, the addition of a random intercept for center minimally affects model performance on validation data, suggesting limited center-level variation.
+Logistic regression models and mixed-effects models, acknowledging center-level variation, reveal consistent predictors in both 36 and 44-week models. Evaluation metrics favor the 44-week model, indicating superior predictive accuracy, precision, and recall. Surprisingly, the addition of a random intercept for center minimally affects model performance on validation data, suggesting limited center-level variation. All four models performed well on the validation data, though the 44-week model with a mixed effect yielded the highest AUC (0.89) and lowest Brier score (0.10).
 
 This study emphasizes the complexity of predicting tracheostomy in sBPD infants, providing direction for future predictive models for tracheostomy.
 
@@ -171,14 +171,6 @@ tab_header(gt_table, title = 'Table 2. Differences by Tracheostomy Status')
 ```
 
 ```{r}
-ggplot(data) +
-  geom_histogram(aes(x = bw))
-
-ggplot(data) +
-  geom_histogram(aes(x = peep_cm_h2o_modified.44))
-```
-
-```{r}
 # Multicollinearity
 # Create a correlation plot of numeric variables
 cor_mat <- data %>%
@@ -199,7 +191,7 @@ corrplot(cor_mat, method = "circle", type = "lower", tl.cex = 0.8, tl.srt = 45, 
 
 ### Missing Data
 
-The data derived from diverse medical centers manifests noteworthy disparities, with Center 4 notably lacking recorded measurements at the 44-week interval. Furthermore, a substantial proportion of centers exhibit a heightened prevalence of missing data points for measurements obtained at the 44-week interval compared to those collected at the 36-week mark. Specifically, approximately 43% of observations contain missing values for all measurements collected at the 44-week mark. These patterns of missing data warrant thorough investigation and, if deemed appropriate, consideration of imputation techniques.
+The data derived from diverse medical centers manifests noteworthy disparities, with Center 4 notably lacking recorded measurements at the 44-week interval. Furthermore, a substantial proportion of centers exhibit a heightened prevalence of missing data points for measurements obtained at the 44-week interval compared to those collected at the 36-week mark. Specifically, approximately 43% of observations contain missing values for all measurements collected at the 44-week mark. This could be due to the infants being discharged prior to the 44-week mark. In fact, Table 4 shows that infants with data missing at the 44 week mark have less tracheostomy prevalence than those with data at the 44 week mark. Either way, these patterns of missing data warrant thorough investigation and, if deemed appropriate, consideration of imputation techniques.
 
 Table 3 delineates the eight columns with the highest percentage of missing data in the entire dataset. Remarkably, more than half of these columns comprise measurements collected at 44 weeks, posing potential challenges for subsequent analysis. The remaining columns involve the infant's receipt of surfactant in the first 72 hours and complete prenatal steroids. Examination of Figure 1 reveals correlations between measurements at 44 weeks and those at 36 weeks, facilitating the imputation of missing data for the former. Similarly, the relationship between the infant's receipt of complete prenatal steroids and prenatal corticosteroids allows for reliable imputation. However, the absence of variables enabling the accurate prediction of whether an infant received surfactant renders imputation unreliable in this particular context, prompting its exclusion from the imputation process and subsequent analysis.
 
@@ -237,6 +229,29 @@ colnames(missing_data) <- c("Column", "Percent Missing")
 
 kbl(missing_data, booktabs = T, escape = F, caption = "Columns with Largest Volume of Missing Data") %>%
   kable_styling(latex_options = "HOLD_position")
+
+
+trach_discharged <- data %>%
+  filter(is.na(peep_cm_h2o_modified.44) & is.na(weight_today.44) & is.na(inspired_oxygen.44) &
+           is.na(ventilation_support_level_modified.44) & is.na(p_delta.44)) %>%
+  summarise(n = sum(Trach)/n()) %>%
+  pull(n)
+
+trach_not_discharged <- data %>%
+  filter(!is.na(peep_cm_h2o_modified.44) & !is.na(weight_today.44) & !is.na(inspired_oxygen.44) &
+           !is.na(ventilation_support_level_modified.44) & !is.na(p_delta.44)) %>%
+  summarise(n = sum(Trach)/n()) %>%
+  pull(n)
+
+trach_prevalence <- t(data.frame(discharged = trach_discharged,
+                                  not_discharged = trach_not_discharged))
+colnames(trach_prevalence) <- c('Tracheostomy Prop')
+rownames(trach_prevalence) <- c('Missing 44 Week Data', 'Not Missing 44 Week Data')
+
+kable(trach_prevalence, booktabs = T, escape = F, caption = 'Tracheostomy Prevalence Between Infants With and Without Data Collected at 44 Weeks') %>%
+  kable_styling(latex_options = 'HOLD_position')
+
+
 ```
 
 ```{r}
@@ -288,12 +303,12 @@ For the analysis, we opted for a training-validation split ratio of 80-20. Never
 
 For model training and variable selection, the best subsets approach was used, leveraging the abess package in R.
 
-As previously outlined, two distinct models were developed: one focused on predictors gathered at 36 weeks, and the other on predictors obtained at 44 weeks. A combined approach involving best subsets and 10-fold cross-validation was employed for variable selection in each model to enhance model generalizability, mitigate overfitting, and yield more robust estimates. This iterative procedure transpired across the five imputed datasets, with subsequent calculation of average coefficients for the selected variables. The resultant averages were then utilized as the definitive covariates in the subsequent model validation phase.
+As previously outlined, two distinct models were developed: one focused on predictors gathered at 36 weeks, and the other on predictors obtained at 44 weeks. As mentioned earlier, tracheostomy prevalence between infants with data only at 36 weeks and those with data at 44 weeks is different, indicating that the 44 week model may be better at predicting tracheostomy, since the prevalence is higher. A combined approach involving best subsets and 10-fold cross-validation was employed for variable selection in each model to enhance model generalizability, mitigate overfitting, and yield more robust estimates. This iterative procedure transpired across the five imputed datasets, with subsequent calculation of average coefficients for the selected variables. The resultant averages were then utilized as the definitive covariates in the subsequent model validation phase.
 
-While the consideration of interaction terms was intrinsic to the model selection process, the best subsets method exhibited a propensity for favoring interaction terms over main effects. Consequently, the decision was made to exclusively focus on main effects in order to prioritize model interpretability and coherence.
+While the consideration of interaction terms was intrinsic to the model selection process, the best subsets method exhibited a propensity for favoring interaction terms over main effects when all potential interaction terms were included. Consequently, the decision was made to exclusively focus on interactions with pulmonary hypertension, as research suggests pulmonary hypertension is associated with severe maternal complications and high mortality [@pieper2011pregnancy]. Therefore, it is reasonable to assume there might be some significant interactions between pulmonary hypertension and the other respiratory parameters.
 
 ```{r}
-forward_selection <- function(df, colnames) {
+forward_selection <- function(df, colnames, week) {
   #' Function to perform forward selection
   #' 
   #' @param df, dataframe
@@ -301,11 +316,20 @@ forward_selection <- function(df, colnames) {
   #' 
   #' @return coefficients after performing k-fold cross validation
   
-  x.ord <- model.matrix(Trach ~ ., data = df[,colnames])[,-1]
+  if (week == 36) {
+    x.ord <- model.matrix(Trach ~ . + inspired_oxygen.36:med_ph.36 + p_delta.36:med_ph.36 +
+                            peep_cm_h2o_modified.36:med_ph.36 + 
+                            ventilation_support_level.36:med_ph.36, data = df[,colnames])[,-1]
+  } else {
+    x.ord <- model.matrix(Trach ~ . + inspired_oxygen.44:med_ph.44 + p_delta.44:med_ph.44 +
+                            peep_cm_h2o_modified.44:med_ph.44 + 
+                            ventilation_support_level_modified.44:med_ph.44, 
+                          data = df[,colnames])[,-1]
+  }
   y.ord <- df$Trach
   
   abess_fit <- abess(x.ord, y.ord, family = "binomial", 
-                     tune.type = "cv", nfolds = 10, seed = 1)
+                     tune.type = "cv", nfolds = 10, seed = 1, fit.intercept = TRUE)
   
   coefs <- extract(abess_fit, which.min(abess_fit$tune.value))
   
@@ -324,22 +348,21 @@ colnames_44 <- c("mat_ethn", "bw", "ga", "del_method", "prenat_ster",
                  "ventilation_support_level_modified.44", "Trach")
 
 # Perform forward selection for both the 36 week model and the 44 week model
-coefs_1.36 <- forward_selection(train_imp[[1]], colnames_36)
-coefs_2.36 <- forward_selection(train_imp[[2]], colnames_36)
-coefs_3.36 <- forward_selection(train_imp[[3]], colnames_36)
-coefs_4.36 <- forward_selection(train_imp[[4]], colnames_36)
-coefs_5.36 <- forward_selection(train_imp[[5]], colnames_36)
+coefs_1.36 <- forward_selection(train_imp[[1]], colnames_36, 36)
+coefs_2.36 <- forward_selection(train_imp[[2]], colnames_36, 36)
+coefs_3.36 <- forward_selection(train_imp[[3]], colnames_36, 36)
+coefs_4.36 <- forward_selection(train_imp[[4]], colnames_36, 36)
+coefs_5.36 <- forward_selection(train_imp[[5]], colnames_36, 36)
 
 coef_36 <- cbind(coefs_1.36, coefs_2.36, coefs_3.36,
                  coefs_4.36, coefs_5.36) 
-avg_coefs_36 <- apply(coef_36, 1, mean) 
+avg_coefs_36 <- apply(coef_36, 1, mean)
 
-
-coefs_1.44 <- forward_selection(train_imp[[1]], colnames_44)
-coefs_2.44 <- forward_selection(train_imp[[2]], colnames_44)
-coefs_3.44 <- forward_selection(train_imp[[3]], colnames_44)
-coefs_4.44 <- forward_selection(train_imp[[4]], colnames_44)
-coefs_5.44 <- forward_selection(train_imp[[5]], colnames_44)
+coefs_1.44 <- forward_selection(train_imp[[1]], colnames_44, 44)
+coefs_2.44 <- forward_selection(train_imp[[2]], colnames_44, 44)
+coefs_3.44 <- forward_selection(train_imp[[3]], colnames_44, 44)
+coefs_4.44 <- forward_selection(train_imp[[4]], colnames_44, 44)
+coefs_5.44 <- forward_selection(train_imp[[5]], colnames_44, 44)
 
 coef_44 <- cbind(coefs_1.44, coefs_2.44, coefs_3.44,
                  coefs_4.44, coefs_5.44) 
@@ -354,7 +377,7 @@ To assess the model's efficacy on the test dataset, a suite of metrics including
 
 The observed variation across different centers appears to be of sufficient magnitude to justify its consideration in the model. While incorporating center as a covariate or creating separate models for each center are conceivable alternatives, they pose challenges by compromising the model's generalizability. In instances where the objective is to model variable variation within a hierarchical dataset, particularly one characterized by distinct levels such as individuals (infants) and centers, a Generalized Linear Mixed Effects (GLMM) model becomes a fitting choice.
 
-To construct the GLMM, the fixed effects models, determined through best subsets variable selection, underwent modification to encompass a random intercept for the center. This approach acknowledges and accommodates the hierarchical structure inherent in the data, ensuring a nuanced exploration of variability at both the individual and center levels. The models were trained on an amalgamated dataset, consolidating information from all five imputed test datasets. They were evaluated based on the same metrics as the fixed effect models and the Intra-Class Coefficient.
+To construct the GLMM, the logistic regression models, determined through best subsets variable selection, underwent modification to encompass a random intercept for the center. This approach acknowledges and accommodates the hierarchical structure inherent in the data, ensuring a nuanced exploration of variability at both the individual and center levels. The models were trained on an amalgamated dataset, consolidating information from all five imputed test datasets. They were evaluated based on the same metrics as the logistic regression models and the Intra-Class Coefficient.
 
 ```{r}
 # Add the random Effect
@@ -362,13 +385,16 @@ To construct the GLMM, the fixed effects models, determined through best subsets
 test_data_long <- rbind(test_imp[[1]], test_imp[[2]], test_imp[[3]],
                         test_imp[[4]], test_imp[[5]])
 
-mixed.36 <- lmer(Trach ~ prenat_ster + sga + growth_36 + inspired_oxygen.36 + med_ph.36 + ventilation_support_level.36 + (1 | center), 
+mixed.36 <- lmer(Trach ~ prenat_ster + sga + growth_36 + inspired_oxygen.36 + med_ph.36 + ventilation_support_level.36 + med_ph.36 * ventilation_support_level.36 + (1 | center), 
             data = test_data_long)
 predict.36 <- predict(mixed.36)
 
-mixed.44 <- lmer(Trach ~ del_method + prenat_ster +  mat_chorio + sga + growth_44 + 
-                   med_ph.44 + ventilation_support_level_modified.44 + 
-                   peep_cm_h2o_modified.44 + (1 | center), data = test_data_long)
+mixed.44 <- lmer(Trach ~ del_method + prenat_ster + com_prenat_ster +  mat_chorio + 
+                   gender + sga + growth_44 + peep_cm_h2o_modified.44 + med_ph.44 + 
+                   ventilation_support_level_modified.44 + p_delta.44:med_ph.44 + 
+                   peep_cm_h2o_modified.44:med_ph.44 + 
+                   med_ph.44:ventilation_support_level_modified.44 + (1 | center), 
+                 data = test_data_long)
 predict.44 <- predict(mixed.44)
 ```
 
@@ -376,53 +402,59 @@ predict.44 <- predict(mixed.44)
 
 ### Model Results
 
-Table 4 presents the coefficients derived from the best subsets variable selection process for all models. In the 36-week model, pivotal predictors include prenatal corticosteroids, small for gestational age (SGA), inspired oxygen, medication for pulmonary hypertension (PH), and invasive positive pressure. Conversely, the 44-week model emphasizes variables such as cesarean section, prenatal corticosteroids, SGA, PEEP, medication for PH, and ventilation support invasive positive pressure.
+Table 5 presents the coefficients derived from the best subsets variable selection process for all models. In the 36-week model, pivotal predictors include prenatal corticosteroids, small for gestational age (SGA), inspired oxygen, medication for pulmonary hypertension (PH), and invasive positive pressure. Conversely, the 44-week model emphasizes variables such as cesarean section, prenatal corticosteroids, SGA, PEEP, medication for PH, and ventilation support invasive positive pressure.
 
 The consistent selection of prenatal corticosteroids and SGA in both models underscores their significance in predicting tracheostomy. Notably, medication for PH and invasive positive pressure emerge as significant predictors at both temporal points.
 
-Analysis of Table 4 reveals a positive effect on the log odds of receiving a tracheostomy for all covariates in both models. Specifically, according to the 36-week model, infants exposed to prenatal corticosteroids are 1.44 times more likely to undergo tracheostomy, while those administered medication for PH exhibit a 1.39 times higher likelihood compared to their counterparts. Invasive positive pressure yields the largest odds ratio, signifying a substantial difference between infants receiving this respiratory support and those devoid of respiratory assistance. Despite the anticipated association between being classified as SGA and tracheostomy, SGA infants are 1.07 times more likely to undergo tracheostomy than their non-SGA counterparts.
+Analysis of Table 5 reveals a positive effect on the log odds of receiving a tracheostomy for all covariates in both models. Specifically, according to the 36-week model, infants exposed to prenatal corticosteroids are 1.88 times more likely to undergo tracheostomy. Invasive positive pressure is the main effect that yields the largest odds ratio, signifying a substantial difference between infants receiving this respiratory support and those devoid of respiratory assistance. Despite the anticipated association between being classified as SGA and tracheostomy, SGA infants are 1.08 times more likely to undergo tracheostomy than their non-SGA counterparts.
 
-Within the 44-week model, invasive positive pressure emerges with the highest odds ratio. Unexpectedly, a pronounced difference in the odds of tracheostomy is observed for infants administered medication for PH compared to the 36-week model. Additionally, maternal chorioamnionitis surfaces as a predictor in the 44-week model, despite its absence in the 36-week model.
+Within the 44-week model, invasive positive pressure emerges with the highest odds ratio. Unexpectedly, a pronounced difference in the odds of tracheostomy is observed for infants administered medication for PH compared to the 36-week model, as the main effect is considered significant in this model, but not the 36 week model. Additionally, maternal chorioamnionitis surfaces as a predictor in the 44-week model, despite its absence in the 36-week model. Across both models, we see the interaction term between non-invasive positive pressure and medication for PH emerge as a significant predictor of receiving a tracheostomy.
 
 ```{r}
 # Create tables containing coefficients for both fixed effects models
 coefs_36_df <- as.data.frame(avg_coefs_36[avg_coefs_36 != 0])
-coefs_36_df$col <- c("Prenatal Corticosteroids", "SGA", "Growth (from Birth)", "Inspired O2", "Medication for PH", "Invasive Positive Pressure")
+coefs_36_df$col <- c("Prenatal Corticosteroids", "SGA", "Growth (from Birth)", "Inspired O2", "Invasive Positive Pressure", "Non-Invasive Positive Pressure x Medication for PH")
 colnames(coefs_36_df) <- c("Value", "Column")
 rownames(coefs_36_df) <- c()
 
 coefs_44_df <- as.data.frame(avg_coefs_44[avg_coefs_44 != 0])
-coefs_44_df$col <- c("Cesarean Section", "Prenatal Corticosteroids", "Maternal Chorioamnionitis", "SGA", "Growth (from 36 Weeks)", "PEEP", "Medication for PH", "Invasive Positive Pressure")
+coefs_44_df$col <- c("Cesarean Section", "Prenatal Corticosteroids", "Complete Prenatal Steroids", "Maternal Chorioamnionitis", "Gender", "SGA", "Growth (from 36 Weeks)", "PEEP", "Medication for PH", "Non-Invasive Positive Pressure", "Invasive Positive Pressure", "Peak Inspiratory Pressure x Medication for PH", "PEEP x Medication for PH", "Invasive Positive Pressure x Medication for PH", "Non-Invasive Positive Pressure x Medication for PH" )
 colnames(coefs_44_df) <- c("Value", "Column")
 rownames(coefs_44_df) <- c()
 ```
 
-From Table 4, we can also see that the introduction of the random effect has induced alterations in the coefficients compared to the fixed effects models. Notably, for variables such as small for gestational age (SGA), medication for pulmonary hypertension (PH), and non-invasive positive pressure (exclusive to the 44-week model), the impact on the log odds of tracheostomy is now negative, contrasting with the positive effects observed in the fixed effects models.
+From Table 5, we can also see that the introduction of the random effect has induced alterations in the coefficients compared to the logistic regression effects models. Notably, for variables such as small for gestational age (SGA), and medication for pulmonary hypertension (exclusive to the 44-week model), the impact on the log odds of tracheostomy is now negative, contrasting with the positive effects observed in the logistic regression models.
 
 ```{r}
 # Create tables containing coefficients for both mixed effects models
 coef.mixed_36 <- as.data.frame(t(coef(mixed.36)$center[1,-1]))
 coef.mixed_36$col <- c("Prenatal Corticosteroids", "SGA", "Growth (from Birth)",
                              "Inspired O2", "Medication for PH", 
-                             "Non-Invasive Positive Pressure", "Invasive Positive Pressure")
+                             "Non-Invasive Positive Pressure", "Invasive Positive Pressure",
+                       "Non-Invasive Positive Pressure x Medication for PH")
 colnames(coef.mixed_36) <- c("Value", "Column")
 rownames(coef.mixed_36) <- c()
 
 coef.mixed_44 <- as.data.frame(t(coef(mixed.44)$center[1,-1]))
 coef.mixed_44$col <- c("Cesarean Section", "Prenatal Corticosteroids", 
-                             "Maternal Chorioamnionitis", "SGA", "Growth (from 36 Weeks)",
-                             "Medication for PH", "Non-Invasive Positive Pressure",
-                             "Invasive Positive Pressure", "PEEP")
+                       "Complete Prenatal Steroids", "Maternal Chorioamnionitis", 
+                       "Gender", "SGA", "Growth (from 36 Weeks)", "PEEP", 
+                       "Medication for PH", "Non-Invasive Positive Pressure", 
+                       "Invasive Positive Pressure", 
+                       "Peak Inspiratory Pressure x Medication for PH", 
+                       "PEEP x Medication for PH", 
+                       "Invasive Positive Pressure x Medication for PH",
+                       "Non-Invasive Positive Pressure x Medication for PH")
 colnames(coef.mixed_44) <- c("Value", "Column")
 rownames(coef.mixed_44) <- c()
 
 model_comparison <- coefs_36_df %>%
   full_join(coefs_44_df, by = 'Column') %>%
-  select(Column, value_1 = Value.x, value_2 = Value.y) %>%
+  dplyr::select(Column, value_1 = Value.x, value_2 = Value.y) %>%
   full_join(coef.mixed_36, by = 'Column') %>%
-  select(Column, value_1, value_2, value_3 = Value) %>%
+  dplyr::select(Column, value_1, value_2, value_3 = Value) %>%
   full_join(coef.mixed_44, by = 'Column') %>%
-  select(Column, value_1, value_2, value_3, value_4 = Value)
+  dplyr::select(Column, value_1, value_2, value_3, value_4 = Value)
 
 model_comparison[is.na(model_comparison)] <- 0
 colnames(model_comparison) <- c("Covariate",
@@ -445,9 +477,9 @@ kable(model_comparison,
 
 ### Model Performance
 
-Model evaluation encompassed precision, recall, and the F-score, with the optimal threshold determined by the ROC curve and documented in Table 5. Notably, a discernible trend suggests higher predictive accuracy in the 44-week model compared to the 36-week model. This observation extends to improved precision and recall metrics, coupled with a higher optimal threshold for predictions in the 44-week model.
+Model evaluation encompassed the Brier score, precision, recall, and the F-score, with the optimal threshold determined by the ROC curve and documented in Table 6. Notably, a discernible trend suggests higher predictive accuracy in the 44-week model compared to the 36-week model. This observation extends to improved precision and recall metrics, coupled with a higher optimal threshold for predictions in the 44-week model. Additionally, a lower Brier score is noticed when comparing both 44 week models to their 36 week counterparts. Similarly, the models with the random intercept have better calibration measures than the models without the random intercept.
 
-Table 5 also delineates the mixed effects model's performance on validation data. Strikingly, the introduction of the random intercept yields no significant change in model performance. This outcome suggests that the anticipated substantial variation between centers might be less pronounced than initially envisaged. To further explore this, the Intra-Class Correlation Coefficient (ICC) was computed using the formula:
+Table 6 also delineates the mixed effects model's performance on validation data. Strikingly, though the mixed effect 44 week model performs best, the introduction of the random intercept yields only a small change in model performance. This outcome suggests that the anticipated substantial variation between centers might be less pronounced than initially envisaged. To further explore this, the Intra-Class Correlation Coefficient (ICC) was computed using the formula:
 
 $$
 ICC = \frac{\sigma^2_{center}}{\sigma^2 + \sigma^2_{center}}
@@ -455,13 +487,18 @@ $$
 
 where $\sigma^2_{center}$ captures between center variability and the denominator captures total variability.
 
-Calculated ICCs for the 36-week and 44-week mixed effects models stand at 0.2022 and 0.2226, respectively. To justify the adoption of a random intercept, an ICC greater than 0.5 is typically sought, indicating substantial within-group variability amenable to capture by a random effect.
+Calculated ICCs for the 36-week and 44-week mixed effects models stand at 0.2056 and 0.2446, respectively. To justify the adoption of a random intercept, an ICC greater than 0.5 is typically sought, indicating substantial within-group variability amenable to capture by a random effect.
 
 ```{r}
 # Model Validation
 # Use ROC curve to get the best threshold
+names(avg_coefs_36)[20:21] <- c('ventilation_support_level.361:med_ph.36', 
+                                'ventilation_support_level.362:med_ph.36')
 
-get_metrics <- function(data, model_coefs) {
+names(avg_coefs_44)[20:21] <- c('ventilation_support_level_modified.441:med_ph.44',
+                                'ventilation_support_level_modified.442:med_ph.44')
+
+get_metrics <- function(data, model_coefs, week) {
   #' Function to get metrics for a model
   #' 
   #' @param data, dataset
@@ -469,9 +506,13 @@ get_metrics <- function(data, model_coefs) {
   #' 
   #' @return list containing best threshold, precision, recall, and f score
   
-  x_vars <- model.matrix(Trach ~ ., data = data)
-  x_vars <- x_vars[,names(model_coefs)]
+  if (week == 36) {
+    x_vars <- model.matrix(Trach ~  . + med_ph.36:(.), data = data)[,-1]
+  } else if (week == 44){
+    x_vars <- model.matrix(Trach ~  . + med_ph.44:(.), data = data)[,-1]
+  }
   
+  x_vars <- x_vars[, names(model_coefs)]
   data$score <- as.numeric(x_vars %*% model_coefs)
   model <- glm(Trach ~ score, data = data, family = "binomial")
   predictions <- predict(model, type = "response")
@@ -515,7 +556,7 @@ get_metrics <- function(data, model_coefs) {
 }
 
 
-model_validation <- function(test_data, coefs) {
+model_validation <- function(test_data, coefs, week) {
   #' Function to loop through all imputed test datasets and calculate the metrics for each one
   #' Averages the metrics across all imputed datasets
   #' 
@@ -527,15 +568,23 @@ model_validation <- function(test_data, coefs) {
   precision = recall = f1 = threshold = auc = brier = c()
   
   for (i in 1:length(test_data)) {
-    
-    metrics <- get_metrics(test_data[[i]], coefs)
-    precision <- c(precision, metrics$precision)
-    recall <- c(recall, metrics$recall)
-    f1 <- c(f1, metrics$f1)
-    threshold <- c(threshold, metrics$best_threshold)
-    auc <- c(auc, metrics$auc)
-    brier <- c(brier, metrics$brier)
-    
+    if (week == 36) {
+      metrics <- get_metrics(test_data[[i]], coefs, 36)
+      precision <- c(precision, metrics$precision) 
+      recall <- c(recall, metrics$recall)
+      f1 <- c(f1, metrics$f1)
+      threshold <- c(threshold, metrics$best_threshold) 
+      auc <- c(auc, metrics$auc)
+      brier <- c(brier, metrics$brier)
+    } else {
+      metrics <- get_metrics(test_data[[i]], coefs, 44)
+      precision <- c(precision, metrics$precision) 
+      recall <- c(recall, metrics$recall)
+      f1 <- c(f1, metrics$f1)
+      threshold <- c(threshold, metrics$best_threshold) 
+      auc <- c(auc, metrics$auc)
+      brier <- c(brier, metrics$brier)
+    }
   }
   
   return(list(threshold = mean(threshold),
@@ -548,11 +597,11 @@ model_validation <- function(test_data, coefs) {
 }
 
 # Perform model validation for fixed effects models
-val.36 <- model_validation(test_imp, avg_coefs_36)
-val.44 <- model_validation(test_imp, avg_coefs_44)
+val.36 <- model_validation(test_imp, avg_coefs_36, 36)
+val.44 <- model_validation(test_imp, avg_coefs_44, 44)
 
-
-val_df <- t(data.frame(week36 = round(as.numeric(val.36),2), week44 = round(as.numeric(val.44),2)))
+val_df <- t(data.frame(week36 = round(as.numeric(val.36), 2), 
+                       week44 = round(as.numeric(val.44), 2)))
 
 
 model_val <- function(data, model) {
@@ -624,7 +673,7 @@ kable(model_metrics, caption = 'Model Validation Metrics', booktabs = T, escape 
 
 ## Discussion
 
-Figure 2 illustrates the plotted predicted probabilities corresponding to variables common to both fixed effects models, namely ventilation support level, small for gestational age (SGA), medication for pulmonary hypertension (PH), and prenatal corticosteroids. Examination of the distributions reveals that, for most covariates, differences are not overtly pronounced. In the instances of prenatal corticosteroids and SGA, variations are discernible in the spread of distributions, rather than the location of their peaks. Conversely, medication for PH exhibits a more dispersed distribution among individuals receiving the medication, lacking distinct peaks.
+Figure 2 illustrates the plotted predicted probabilities corresponding to variables common to both logistic regression models, namely ventilation support level, small for gestational age (SGA), medication for pulmonary hypertension (PH), and prenatal corticosteroids. Examination of the distributions reveals that, for most covariates, differences are not overtly pronounced. In the instances of prenatal corticosteroids and SGA, variations are discernible in the spread of distributions, rather than the location of their peaks. Conversely, medication for PH exhibits a more dispersed distribution among individuals receiving the medication, lacking distinct peaks.
 
 Conversely, a notable distinction emerges in the predicted probabilities between infants devoid of supplementary oxygen and those subjected to invasive positive pressure. The probability distribution for infants without supplementary oxygen is confined, with a peak near 0, whereas the distribution for infants receiving invasive positive pressure is more expansive, featuring a peak closer to 0.4.
 
@@ -656,9 +705,10 @@ This analysis has been performed with help from Dr. Christopher Schmid from the 
 # Plot distributions of predicted probabilities by significant covariates
 
 library(gridExtra)
-x_vars <- model.matrix(Trach ~ ., data = test_data_long)
-x_vars_44 <- x_vars[,names(avg_coefs_44)]
-x_vars_36 <- x_vars[,names(avg_coefs_36)]
+x_vars_36 <- model.matrix(Trach ~ . + med_ph.36:(.), data = test_data_long)
+x_vars_44 <- model.matrix(Trach ~ . + med_ph.44:(.), data = test_data_long)
+x_vars_44 <- x_vars_44[,names(avg_coefs_44)]
+x_vars_36 <- x_vars_36[,names(avg_coefs_36)]
 
 test_data_long$score_36 <- as.numeric(x_vars_36 %*% avg_coefs_36)
 test_data_long$score_44 <- as.numeric(x_vars_44 %*% avg_coefs_44)
@@ -671,8 +721,8 @@ pred_44 <- predict(model_44, type = "response")
 
 vent_levels <- c(
   '0'="No Support",
-  '1'="Non-Invasive Support",
-  '2'="Invasive Support"
+  '1'="Non-Invasive",
+  '2'="Invasive"
 )
 
 plot_1 <- ggplot(test_data_long) +
@@ -755,7 +805,7 @@ grid.arrange(plot_1, plot_2,
              plot_7, plot_8, nrow = 4, ncol = 2)
 ```
 
-#### Figure 2. Plot of Predicted Probabilities 
+#### Figure 2. Plot of Predicted Probabilities
 
 \newpage
 
