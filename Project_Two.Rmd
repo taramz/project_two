@@ -246,7 +246,7 @@ trach_not_discharged <- data %>%
 
 trach_prevalence <- t(data.frame(discharged = trach_discharged,
                                   not_discharged = trach_not_discharged))
-colnames(trach_prevalence) <- c('Tracheostomy Prop')
+colnames(trach_prevalence) <- c('Tracheostomy Proportion')
 rownames(trach_prevalence) <- c('Missing 44 Week Data', 'Not Missing 44 Week Data')
 
 kable(trach_prevalence, booktabs = T, escape = F, caption = 'Tracheostomy Prevalence Between Infants With and Without Data Collected at 44 Weeks') %>%
